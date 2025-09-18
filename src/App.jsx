@@ -23,6 +23,9 @@ function App() {
   const WRITE_ALL_MEDIA_ENDPOINT = IS_DEV
     ? '/writeAllMedia'
     : 'https://us-central1-digislidesapp.cloudfunctions.net/writeAllMedia'
+  const READ_ALL_MEDIA_ENDPOINT = IS_DEV
+    ? '/readAllMedia'
+    : 'https://us-central1-digislidesapp.cloudfunctions.net/readAllMedia'
 
   const getPreSignedURLForAllMedia = async (operationType = 'write') => {
     try {
@@ -86,13 +89,7 @@ function App() {
 
   const readAllMediaFromS3 = async () => {
     try {
-      const readUrl = await getPreSignedURLForAllMedia('read')
-      if (!readUrl) return []
-      // In dev, route through Vite proxy to bypass S3 CORS
-      const devUrl = IS_DEV && readUrl.startsWith('https://digisolutions-assets.s3.eu-west-1.amazonaws.com')
-        ? readUrl.replace('https://digisolutions-assets.s3.eu-west-1.amazonaws.com', '/s3')
-        : readUrl
-      const res = await axios.get(devUrl, { responseType: 'json' })
+      const res = await axios.get(READ_ALL_MEDIA_ENDPOINT, { responseType: 'json' })
       const data = res.data
       return Array.isArray(data) ? data : []
     } catch (e) {
