@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "source": "src/functions",
+    "runtime": "nodejs20"
+  }
+}
+

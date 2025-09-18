@@ -1,0 +1,14 @@
+{
+    "name": "awswebmanager",
+    "main": "index.js",
+    "version": "1.0.0",
+    "dependencies": {
+      "@aws-sdk/client-s3": "3.592.0",
+      "@aws-sdk/s3-request-presigner": "3.592.0",
+      "firebase-functions": "^4.9.0"
+    },
+    "engines": {
+      "node": "20"
+    }
+  }
+  
