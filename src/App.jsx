@@ -424,7 +424,7 @@ function App() {
           <div>
             <button
               type="button"
-              onClick={(e) => { e.preventDefault(); openFileDialog() }}
+              onClick={(e) => { e.stopPropagation(); openFileDialog(); }}
               disabled={uploading}
               style={{
                 ...(window.__btnPrimary || {}),
