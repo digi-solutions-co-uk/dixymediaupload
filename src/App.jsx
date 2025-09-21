@@ -132,10 +132,12 @@ function App() {
     }
   }, [selectedFiles])
 
-  const acceptTypes = useMemo(() => 'image/*,video/*', [])
+  const acceptTypes = useMemo(() => 'image/jpeg,image/jpg,image/png,image/gif,image/webp,video/mp4,video/avi,video/mov,video/wmv,video/flv,video/webm', [])
 
   const onChooseFiles = (e) => {
+    console.log('File input changed:', e.target.files)
     const files = Array.from(e.target.files || [])
+    console.log('Files selected:', files.length)
     if (!files.length) return
 
     const filtered = files.filter(f => (f.type || '').startsWith('image/') || (f.type || '').startsWith('video/'))
@@ -191,7 +193,13 @@ function App() {
   }
 
   const openFileDialog = () => {
-    if (fileInputRef.current) fileInputRef.current.click()
+    console.log('Opening file dialog, uploading:', uploading)
+    if (fileInputRef.current) {
+      console.log('File input ref exists, clicking...')
+      fileInputRef.current.click()
+    } else {
+      console.log('File input ref not found')
+    }
   }
 
   const removeFile = (index) => {
