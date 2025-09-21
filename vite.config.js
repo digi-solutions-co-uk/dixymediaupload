@@ -26,6 +26,12 @@ export default defineConfig({
         secure: true,
         rewrite: (path) => path.replace(/^\/writeAllMedia/, '/writeAllMedia'),
       },
+      '/readAllMedia': {
+        target: 'https://us-central1-digislidesapp.cloudfunctions.net',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/readAllMedia/, '/readAllMedia'),
+      },
       // Proxy S3 for signed GETs in dev to avoid browser CORS
       '/s3': {
         target: 'https://digisolutions-assets.s3.eu-west-1.amazonaws.com',
