@@ -135,8 +135,14 @@ function App() {
   const acceptTypes = useMemo(() => 'image/jpeg,image/jpg,image/png,image/gif,image/webp,video/mp4,video/avi,video/mov,video/wmv,video/flv,video/webm', [])
 
   const onChooseFiles = (e) => {
-    console.log('File input changed:', e.target.files)
+    console.log('=== FILE INPUT EVENT ===')
+    console.log('Event type:', e.type)
+    console.log('Target:', e.target)
+    console.log('Files:', e.target.files)
+    console.log('Files length:', e.target.files?.length)
+    
     const files = Array.from(e.target.files || [])
+    console.log('Files array:', files)
     console.log('Files selected:', files.length)
     
     if (!files.length) {
@@ -144,10 +150,22 @@ function App() {
       return
     }
 
+    // Log each file's details
+    files.forEach((file, index) => {
+      console.log(`File ${index}:`, {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified
+      })
+    })
+
     const filtered = files.filter(f => (f.type || '').startsWith('image/') || (f.type || '').startsWith('video/'))
     console.log('Filtered files:', filtered.length)
+    console.log('Filtered files details:', filtered.map(f => ({ name: f.name, type: f.type })))
     
     if (filtered.length !== files.length) {
+      console.log('Some files were filtered out')
       window.alert('Only images and videos are allowed.')
     }
 
@@ -165,15 +183,20 @@ function App() {
       previewUrl: URL.createObjectURL(file),
     }))
 
+    console.log('Mapped files:', mapped)
     console.log('Adding files to selectedFiles:', mapped.length)
+    
     setSelectedFiles(prev => {
+      console.log('Previous selectedFiles:', prev.length)
       const newFiles = [...prev, ...mapped]
-      console.log('Total selected files after adding:', newFiles.length)
+      console.log('New selectedFiles:', newFiles.length)
+      console.log('New files details:', newFiles.map(f => ({ name: f.name, type: f.type })))
       return newFiles
     })
     
     // Reset input value to allow re-selecting the same file
     e.target.value = ''
+    console.log('=== END FILE INPUT EVENT ===')
   }
 
   const onDrop = (e) => {
@@ -210,15 +233,21 @@ function App() {
   }
 
   const openFileDialog = () => {
-    console.log('Opening file dialog, uploading:', uploading)
+    console.log('=== OPEN FILE DIALOG ===')
+    console.log('Uploading state:', uploading)
+    console.log('File input ref:', fileInputRef.current)
+    console.log('File input disabled:', fileInputRef.current?.disabled)
+    
     if (fileInputRef.current) {
       console.log('File input ref exists, clicking...')
       // Reset the input value to ensure it triggers onChange even for the same files
       fileInputRef.current.value = ''
       fileInputRef.current.click()
+      console.log('File input clicked')
     } else {
       console.log('File input ref not found')
     }
+    console.log('=== END OPEN FILE DIALOG ===')
   }
 
   const removeFile = (index) => {
