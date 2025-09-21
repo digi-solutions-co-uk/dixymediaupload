@@ -138,11 +138,22 @@ function App() {
     console.log('File input changed:', e.target.files)
     const files = Array.from(e.target.files || [])
     console.log('Files selected:', files.length)
-    if (!files.length) return
+    
+    if (!files.length) {
+      console.log('No files selected, returning early')
+      return
+    }
 
     const filtered = files.filter(f => (f.type || '').startsWith('image/') || (f.type || '').startsWith('video/'))
+    console.log('Filtered files:', filtered.length)
+    
     if (filtered.length !== files.length) {
       window.alert('Only images and videos are allowed.')
+    }
+
+    if (filtered.length === 0) {
+      console.log('No valid files after filtering')
+      return
     }
 
     const mapped = filtered.map(file => ({
@@ -154,8 +165,14 @@ function App() {
       previewUrl: URL.createObjectURL(file),
     }))
 
-    setSelectedFiles(prev => [...prev, ...mapped])
-    // reset input value to allow re-selecting the same file
+    console.log('Adding files to selectedFiles:', mapped.length)
+    setSelectedFiles(prev => {
+      const newFiles = [...prev, ...mapped]
+      console.log('Total selected files after adding:', newFiles.length)
+      return newFiles
+    })
+    
+    // Reset input value to allow re-selecting the same file
     e.target.value = ''
   }
 
@@ -196,6 +213,8 @@ function App() {
     console.log('Opening file dialog, uploading:', uploading)
     if (fileInputRef.current) {
       console.log('File input ref exists, clicking...')
+      // Reset the input value to ensure it triggers onChange even for the same files
+      fileInputRef.current.value = ''
       fileInputRef.current.click()
     } else {
       console.log('File input ref not found')
