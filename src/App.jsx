@@ -9,6 +9,10 @@ function App() {
   const [uploadProgress, setUploadProgress] = useState({})
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [dragActive, setDragActive] = useState(false)
+  const [stores, setStores] = useState([])
+  const [storesLoading, setStoresLoading] = useState(false)
+  const [storesError, setStoresError] = useState('')
+  const [selectedStore, setSelectedStore] = useState(null)
   const fileInputRef = useRef(null)
 
   // AWS Manager endpoint to generate pre-signed URLs
@@ -81,9 +85,22 @@ function App() {
     return items.map(it => {
       const id = generateId()
       if (it.type === 'video') {
-        return { itemId: id, type: 'Video', videoUrl: it.fileUrl, previewUrl: it.fileUrl }
+        return {
+          itemId: id,
+          type: 'Video',
+          videoUrl: it.fileUrl,
+          previewUrl: it.fileUrl,
+          storeId: selectedStore?.store_id,
+          postcode: selectedStore?.postcode,
+        }
       }
-      return { itemId: id, type: 'Image', uri: it.fileUrl }
+      return {
+        itemId: id,
+        type: 'Image',
+        uri: it.fileUrl,
+        storeId: selectedStore?.store_id,
+        postcode: selectedStore?.postcode,
+      }
     })
   }
 
@@ -132,6 +149,36 @@ function App() {
     }
   }, [selectedFiles])
 
+  // Fetch branches list
+  useEffect(() => {
+    const fetchStores = async () => {
+      try {
+        setStoresLoading(true)
+        setStoresError('')
+        // In dev use S3 proxy; in production use Cloud Function to avoid CORS
+        const urlDev = '/s3/slideconfig/dixymedia/config/allstores.json'
+        const urlProd = 'https://us-central1-digislidesapp.cloudfunctions.net/readAllStores'
+        const url = IS_DEV ? urlDev : urlProd
+        const { data } = await axios.get(url, { responseType: 'json' })
+        const list = Array.isArray(data) ? data : []
+        setStores(list)
+      } catch (e) {
+        // Fallback: try direct S3 URL if primary failed
+        try {
+          const { data } = await axios.get('https://digisolutions-assets.s3.amazonaws.com/slideconfig/dixymedia/config/allstores.json', { responseType: 'json' })
+          const list = Array.isArray(data) ? data : []
+          setStores(list)
+        } catch (err) {
+          setStoresError('Failed to load branches list. Please refresh or check network.')
+          console.error('Error fetching allstores.json (fallback also failed)', err)
+        }
+      } finally {
+        setStoresLoading(false)
+      }
+    }
+    fetchStores()
+  }, [])
+
   const acceptTypes = useMemo(() => 'image/jpeg,image/jpg,image/png,image/gif,image/webp,video/mp4,video/avi,video/mov,video/wmv,video/flv,video/webm', [])
 
   const onChooseFiles = (e) => {
@@ -140,11 +187,11 @@ function App() {
     console.log('Target:', e.target)
     console.log('Files:', e.target.files)
     console.log('Files length:', e.target.files?.length)
-    
+
     const files = Array.from(e.target.files || [])
     console.log('Files array:', files)
     console.log('Files selected:', files.length)
-    
+
     if (!files.length) {
       console.log('No files selected, returning early')
       return
@@ -163,7 +210,7 @@ function App() {
     const filtered = files.filter(f => (f.type || '').startsWith('image/') || (f.type || '').startsWith('video/'))
     console.log('Filtered files:', filtered.length)
     console.log('Filtered files details:', filtered.map(f => ({ name: f.name, type: f.type })))
-    
+
     if (filtered.length !== files.length) {
       console.log('Some files were filtered out')
       window.alert('Only images and videos are allowed.')
@@ -185,7 +232,7 @@ function App() {
 
     console.log('Mapped files:', mapped)
     console.log('Adding files to selectedFiles:', mapped.length)
-    
+
     setSelectedFiles(prev => {
       console.log('Previous selectedFiles:', prev.length)
       const newFiles = [...prev, ...mapped]
@@ -193,7 +240,7 @@ function App() {
       console.log('New files details:', newFiles.map(f => ({ name: f.name, type: f.type })))
       return newFiles
     })
-    
+
     // Reset input value to allow re-selecting the same file
     e.target.value = ''
     console.log('=== END FILE INPUT EVENT ===')
@@ -237,7 +284,7 @@ function App() {
     console.log('Uploading state:', uploading)
     console.log('File input ref:', fileInputRef.current)
     console.log('File input disabled:', fileInputRef.current?.disabled)
-    
+
     if (fileInputRef.current) {
       console.log('File input ref exists, clicking...')
       // Reset the input value to ensure it triggers onChange even for the same files
@@ -280,6 +327,10 @@ function App() {
   })
 
   const uploadToS3 = async () => {
+    if (!selectedStore) {
+      window.alert('Please select a branch before uploading.')
+      return
+    }
     if (!selectedFiles.length) {
       window.alert('Please select files to upload.')
       return
@@ -348,17 +399,47 @@ function App() {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', alignItems: 'center', justifyContent: 'center', display: 'flex', flexDirection: 'column' }}>
-      <img src={logo} alt="Dixy Logo" style={{ width: 200, height: 200}} />
+      <img src={logo} alt="Dixy Logo" style={{ width: 200, height: 200 }} />
       <h1 style={{ marginBottom: 8 }}>Dixy Media Uploader</h1>
       <p style={{ color: '#555', marginBottom: 16 }}>Select images and videos to upload to Dixy Media.</p>
 
       <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: 12, marginBottom: 16 }}>
+        {/* Branch selector */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignSelf: 'center' }}>
+          <label htmlFor="branch-select" style={{ fontWeight: 600 }}>Select Branch</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <select
+              id="branch-select"
+              value={selectedStore?.store_id || ''}
+              onChange={(e) => {
+                const id = Number(e.target.value)
+                const found = stores.find(s => s.store_id === id) || null
+                setSelectedStore(found)
+              }}
+              disabled={storesLoading}
+              style={{ padding: '10px 12px', borderRadius: 8, border: '1px solid #cbd5e1', minWidth: 260 }}
+            >
+              <option value="" disabled>{storesLoading ? 'Loading branches…' : 'Choose a branch'}</option>
+              {stores.map((s) => (
+                <option key={s.store_id} value={s.store_id}>
+                  {s.name} ({s.postcode || 'N/A'})
+                </option>
+              ))}
+            </select>
+            {selectedStore && (
+              <div style={{ color: '#374151', fontSize: 14 }}>
+                <span style={{ fontWeight: 600 }}>Store ID:</span> {selectedStore.store_id} &nbsp;|&nbsp; <span style={{ fontWeight: 600 }}>Postcode:</span> {selectedStore.postcode || 'N/A'}
+              </div>
+            )}
+          </div>
+          {storesError && (<div style={{ color: '#b91c1c', fontSize: 13 }}>{storesError}</div>)}
+        </div>
         {/** Button style helpers */}
         {(() => { return null })()}
         {/** Define inline style objects */}
-        { /* eslint-disable no-unused-vars */ }
-        { /* Using inline objects for clarity and reuse */ }
-        { /* These are not rendered; just variables */ }
+        { /* eslint-disable no-unused-vars */}
+        { /* Using inline objects for clarity and reuse */}
+        { /* These are not rendered; just variables */}
         {(() => {
           const primaryBase = {
             padding: '10px 16px',
@@ -495,7 +576,7 @@ function App() {
                   }}
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="18" height="18" aria-hidden="true">
-                    <path d="M6 7h12v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7zm3-4h6l1 1h4v2H4V4h4l1-1zm1 6h2v9h-2V9zm4 0h2v9h-2V9z"/>
+                    <path d="M6 7h12v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7zm3-4h6l1 1h4v2H4V4h4l1-1zm1 6h2v9h-2V9zm4 0h2v9h-2V9z" />
                   </svg>
                 </button>
               </div>

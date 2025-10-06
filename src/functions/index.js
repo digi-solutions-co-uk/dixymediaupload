@@ -10,7 +10,7 @@ const REGION = 'eu-west-1';
 exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
     // Explicit CORS for allowed origins
     const origin = req.headers.origin;
-    const allowed = ['http://localhost:5175', 'http://localhost:5173'];
+    const allowed = ['http://localhost:5175', 'http://localhost:5173', 'https://digi-solutions-co-uk.github.io'];
     if (allowed.includes(origin)) {
         res.set('Access-Control-Allow-Origin', origin);
     }
@@ -62,7 +62,7 @@ exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
 // Server-side write to avoid S3 CORS entirely
 exports.writeAllMedia = onRequest({ cors: true }, async (req, res) => {
     const origin = req.headers.origin;
-    const allowed = ['http://localhost:5175', 'http://localhost:5173'];
+    const allowed = ['http://localhost:5175', 'http://localhost:5173', 'https://digi-solutions-co-uk.github.io'];
     if (allowed.includes(origin)) {
         res.set('Access-Control-Allow-Origin', origin);
     }
@@ -106,3 +106,54 @@ exports.writeAllMedia = onRequest({ cors: true }, async (req, res) => {
         return res.status(500).json({ error: 'Write failed', message });
     }
 });
+
+// Server-side read of allstores.json to avoid CORS in production
+exports.readAllStores = onRequest({ cors: true }, async (req, res) => {
+    const origin = req.headers.origin;
+    const allowed = ['http://localhost:5175', 'http://localhost:5173', 'https://digi-solutions-co-uk.github.io'];
+    if (allowed.includes(origin)) {
+        res.set('Access-Control-Allow-Origin', origin);
+    }
+    res.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(204).send('');
+    }
+    if (req.method !== 'GET') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+    if (!accessKeyId || !secretAccessKey) {
+        console.error('Missing AWS credentials.');
+        return res.status(500).json({ error: 'Missing AWS credentials on server' });
+    }
+
+    const s3Client = new S3Client({ region: REGION, credentials: { accessKeyId, secretAccessKey } });
+
+    try {
+        const getParams = {
+            Bucket: BUCKET,
+            Key: 'slideconfig/dixymedia/config/allstores.json',
+        };
+        const result = await s3Client.send(new GetObjectCommand(getParams));
+        const body = await streamToString(result.Body);
+        const json = JSON.parse(body || '[]');
+        return res.status(200).json(json);
+    } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        console.error('Error reading allstores.json:', message);
+        return res.status(500).json({ error: 'Read failed', message });
+    }
+});
+
+function streamToString(stream) {
+    return new Promise((resolve, reject) => {
+        const chunks = [];
+        stream.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+        stream.on('error', (err) => reject(err));
+        stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+    });
+}
