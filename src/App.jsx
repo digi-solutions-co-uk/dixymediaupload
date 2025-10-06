@@ -155,13 +155,28 @@ function App() {
       try {
         setStoresLoading(true)
         setStoresError('')
-        // In dev use S3 proxy; in production use Cloud Function to avoid CORS
-        const urlDev = '/s3/slideconfig/dixymedia/config/allstores.json'
-        const urlProd = 'https://us-central1-digislidesapp.cloudfunctions.net/readAllStores'
-        const url = IS_DEV ? urlDev : urlProd
-        const { data } = await axios.get(url, { responseType: 'json' })
-        const list = Array.isArray(data) ? data : []
-        setStores(list)
+        // In dev use S3 proxy; in production prefer Cloud Function then same-origin JSON fallback
+        if (IS_DEV) {
+          const { data } = await axios.get('/s3/slideconfig/dixymedia/config/allstores.json', { responseType: 'json' })
+          const list = Array.isArray(data) ? data : []
+          setStores(list)
+          return
+        }
+        // Production: try Cloud Function first
+        try {
+          const { data } = await axios.get('https://us-central1-digislidesapp.cloudfunctions.net/readAllStores', { responseType: 'json' })
+          const list = Array.isArray(data) ? data : []
+          setStores(list)
+          return
+        } catch (_) { /* fall through */ }
+        // Same-origin fallback hosted on GitHub Pages
+        try {
+          const { data } = await axios.get('/dixymediaupload/allstores.json', { responseType: 'json' })
+          const list = Array.isArray(data) ? data : []
+          setStores(list)
+          return
+        } catch (_) { /* fall through */ }
+        throw new Error('All fetch attempts failed')
       } catch (e) {
         // Fallback: try direct S3 URL if primary failed
         try {
