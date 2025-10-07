@@ -28,11 +28,11 @@ exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
     const { folderPath, operationType = S3_ACCESS_TYPES.READ } = body;
     if (!folderPath) return res.status(400).json({ error: 'folderPath is required' });
 
-     const accessKeyId = AWS_ACCESS_KEY_ID
-     const secretAccessKey = AWS_SECRET_ACCESS_KEY
+     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
 
      if (!accessKeyId || !secretAccessKey) {
-         console.error('Missing AWS credentials. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as secrets.')
+         console.error('Missing AWS credentials. Set process.env.AWS_ACCESS_KEY_ID and process.env.AWS_SECRET_ACCESS_KEY as secrets.')
          return res.status(500).json({ error: 'Missing AWS credentials on server' })
      }
 
@@ -76,8 +76,8 @@ exports.writeAllMedia = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-     const accessKeyId = AWS_ACCESS_KEY_ID
-     const secretAccessKey = AWS_SECRET_ACCESS_KEY
+     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
      if (!accessKeyId || !secretAccessKey) {
          console.error('Missing AWS credentials.');
          return res.status(500).json({ error: 'Missing AWS credentials on server' });
@@ -124,8 +124,8 @@ exports.readAllStores = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const accessKeyId = AWS_ACCESS_KEY_ID
-    const secretAccessKey = AWS_SECRET_ACCESS_KEY
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
     if (!accessKeyId || !secretAccessKey) {
         console.error('Missing AWS credentials.');
         return res.status(500).json({ error: 'Missing AWS credentials on server' });
@@ -175,8 +175,8 @@ exports.readAllMedia = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const accessKeyId = AWS_ACCESS_KEY_ID
-    const secretAccessKey = AWS_SECRET_ACCESS_KEY
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
     if (!accessKeyId || !secretAccessKey) {
         console.error('Missing AWS credentials.');
         return res.status(500).json({ error: 'Missing AWS credentials on server' });
