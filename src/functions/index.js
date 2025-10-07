@@ -6,8 +6,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const S3_ACCESS_TYPES = { READ: 'read', WRITE: 'write' };
 const BUCKET = 'digisolutions-assets';
 const REGION = 'eu-west-1';
-// const AWS_ACCESS_KEY_ID = "AKIAYS2NXEPTYWUKLQMM";
-// const AWS_SECRET_ACCESS_KEY = "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";
+
 exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
     // Explicit CORS for allowed origins
     const origin = req.headers.origin;
