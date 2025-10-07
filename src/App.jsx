@@ -441,14 +441,14 @@ function App() {
                 </option>
               ))}
             </select>
-            {selectedStore && (
-              <div style={{ color: '#374151', fontSize: 14 }}>
-                <span style={{ fontWeight: 600 }}>Store ID:</span> {selectedStore.store_id} &nbsp;|&nbsp; <span style={{ fontWeight: 600 }}>Postcode:</span> {selectedStore.postcode || 'N/A'}
-              </div>
-            )}
           </div>
           {storesError && (<div style={{ color: '#b91c1c', fontSize: 13 }}>{storesError}</div>)}
         </div>
+        {selectedStore && (
+          <div style={{ color: '#374151', fontSize: 14 }}>
+            <span style={{ fontWeight: 600 }}>Store ID:</span> {selectedStore.store_id} &nbsp;|&nbsp; <span style={{ fontWeight: 600 }}>Postcode:</span> {selectedStore.postcode || 'N/A'}
+          </div>
+        )}
         {/** Button style helpers */}
         {(() => { return null })()}
         {/** Define inline style objects */}

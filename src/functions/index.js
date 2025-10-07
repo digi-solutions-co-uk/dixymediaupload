@@ -6,7 +6,8 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const S3_ACCESS_TYPES = { READ: 'read', WRITE: 'write' };
 const BUCKET = 'digisolutions-assets';
 const REGION = 'eu-west-1';
-
+const AWS_ACCESS_KEY_ID = "AKIAYS2NXEPTYWUKLQMM";
+const AWS_SECRET_ACCESS_KEY = "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";
 exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
     // Explicit CORS for allowed origins
     const origin = req.headers.origin;
@@ -28,8 +29,8 @@ exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
     const { folderPath, operationType = S3_ACCESS_TYPES.READ } = body;
     if (!folderPath) return res.status(400).json({ error: 'folderPath is required' });
 
-     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+     const accessKeyId = AWS_ACCESS_KEY_ID
+     const secretAccessKey = AWS_SECRET_ACCESS_KEY
 
      if (!accessKeyId || !secretAccessKey) {
          console.error('Missing AWS credentials. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as secrets.')
@@ -76,8 +77,8 @@ exports.writeAllMedia = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-     const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-     const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+     const accessKeyId = AWS_ACCESS_KEY_ID
+     const secretAccessKey = AWS_SECRET_ACCESS_KEY
      if (!accessKeyId || !secretAccessKey) {
          console.error('Missing AWS credentials.');
          return res.status(500).json({ error: 'Missing AWS credentials on server' });
@@ -124,8 +125,8 @@ exports.readAllStores = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+    const accessKeyId = AWS_ACCESS_KEY_ID
+    const secretAccessKey = AWS_SECRET_ACCESS_KEY
     if (!accessKeyId || !secretAccessKey) {
         console.error('Missing AWS credentials.');
         return res.status(500).json({ error: 'Missing AWS credentials on server' });
@@ -157,3 +158,45 @@ function streamToString(stream) {
         stream.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
     });
 }
+
+// Server-side read of allmedia.json to avoid CORS in production
+exports.readAllMedia = onRequest({ cors: true }, async (req, res) => {
+    const origin = req.headers.origin;
+    const allowed = ['http://localhost:5175', 'http://localhost:5173', 'https://digi-solutions-co-uk.github.io'];
+    if (allowed.includes(origin)) {
+        res.set('Access-Control-Allow-Origin', origin);
+    }
+    res.set('Access-Control-Allow-Methods', 'GET,OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+    if (req.method === 'OPTIONS') {
+        return res.status(204).send('');
+    }
+    if (req.method !== 'GET') {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+
+    const accessKeyId = AWS_ACCESS_KEY_ID
+    const secretAccessKey = AWS_SECRET_ACCESS_KEY
+    if (!accessKeyId || !secretAccessKey) {
+        console.error('Missing AWS credentials.');
+        return res.status(500).json({ error: 'Missing AWS credentials on server' });
+    }
+
+    const s3Client = new S3Client({ region: REGION, credentials: { accessKeyId, secretAccessKey } });
+
+    try {
+        const getParams = {
+            Bucket: BUCKET,
+            Key: 'slideconfig/dixymedia/config/allmedia.json',
+        };
+        const result = await s3Client.send(new GetObjectCommand(getParams));
+        const body = await streamToString(result.Body);
+        const json = JSON.parse(body || '[]');
+        return res.status(200).json(json);
+    } catch (error) {
+        const message = error && error.message ? error.message : String(error);
+        console.error('Error reading allmedia.json:', message);
+        return res.status(500).json({ error: 'Read failed', message });
+    }
+});
