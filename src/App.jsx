@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
+import { database } from './firebase'
+import { ref, get } from 'firebase/database'
 import './App.css'
 import logo from './assets/dixy_logo.svg'
 
@@ -149,13 +151,45 @@ function App() {
     }
   }, [selectedFiles])
 
-  // Fetch branches list
+  // Fetch branches list from Firebase Realtime Database
   useEffect(() => {
     const fetchStores = async () => {
       setStoresLoading(true)
       setStoresError('')
       
-      // In dev use S3 proxy
+      // Try Firebase Realtime Database first
+      try {
+        console.log('Fetching stores from Firebase Realtime Database...')
+        // Path in Realtime Database - adjust if your path is different
+        const storesRef = ref(database, 'stores')
+        const snapshot = await get(storesRef)
+        
+        if (snapshot.exists()) {
+          const data = snapshot.val()
+          // Handle both array and object formats
+          let list = []
+          if (Array.isArray(data)) {
+            list = data
+          } else if (typeof data === 'object') {
+            // If it's an object, convert to array
+            list = Object.values(data)
+          }
+          
+          if (list.length > 0) {
+            console.log(`Successfully loaded ${list.length} stores from Firebase Realtime Database`)
+            setStores(list)
+            setStoresError('')
+            setStoresLoading(false)
+            return
+          }
+        } else {
+          console.warn('No data found at Firebase path: allstores')
+        }
+      } catch (err) {
+        console.warn('Firebase Realtime Database fetch failed:', err.message)
+      }
+      
+      // Fallback: In dev use S3 proxy
       if (IS_DEV) {
         try {
           const { data } = await axios.get('/s3/slideconfig/dixymedia/config/allstores.json', { responseType: 'json' })
@@ -165,13 +199,10 @@ function App() {
           return
         } catch (err) {
           console.error('Dev fetch error:', err)
-          setStoresError('Failed to load branches list.')
-          setStoresLoading(false)
-          return
         }
       }
       
-      // Production: try multiple endpoints in order
+      // Fallback: try Cloud Function endpoints
       const endpoints = [
         'https://us-central1-digislidesapp.cloudfunctions.net/readAllStores',
         'https://readallstores-ev6bb5ui6a-uc.a.run.app',
