@@ -152,44 +152,57 @@ function App() {
   // Fetch branches list
   useEffect(() => {
     const fetchStores = async () => {
-      try {
-        setStoresLoading(true)
-        setStoresError('')
-        // In dev use S3 proxy; in production prefer Cloud Function then same-origin JSON fallback
-        if (IS_DEV) {
+      setStoresLoading(true)
+      setStoresError('')
+      
+      // In dev use S3 proxy
+      if (IS_DEV) {
+        try {
           const { data } = await axios.get('/s3/slideconfig/dixymedia/config/allstores.json', { responseType: 'json' })
           const list = Array.isArray(data) ? data : []
           setStores(list)
+          setStoresLoading(false)
           return
-        }
-        // Production: try Cloud Function first
-        try {
-          const { data } = await axios.get('https://us-central1-digislidesapp.cloudfunctions.net/readAllStores', { responseType: 'json' })
-          const list = Array.isArray(data) ? data : []
-          setStores(list)
-          return
-        } catch (_) { /* fall through */ }
-        // Same-origin fallback hosted on GitHub Pages
-        try {
-          const { data } = await axios.get('/dixymediaupload/allstores.json', { responseType: 'json' })
-          const list = Array.isArray(data) ? data : []
-          setStores(list)
-          return
-        } catch (_) { /* fall through */ }
-        throw new Error('All fetch attempts failed')
-      } catch (e) {
-        // Fallback: try direct S3 URL if primary failed
-        try {
-          const { data } = await axios.get('https://digisolutions-assets.s3.amazonaws.com/slideconfig/dixymedia/config/allstores.json', { responseType: 'json' })
-          const list = Array.isArray(data) ? data : []
-          setStores(list)
         } catch (err) {
-          setStoresError('Failed to load branches list. Please refresh or check network.')
-          console.error('Error fetching allstores.json (fallback also failed)', err)
+          console.error('Dev fetch error:', err)
+          setStoresError('Failed to load branches list.')
+          setStoresLoading(false)
+          return
         }
-      } finally {
-        setStoresLoading(false)
       }
+      
+      // Production: try multiple endpoints in order
+      const endpoints = [
+        'https://us-central1-digislidesapp.cloudfunctions.net/readAllStores',
+        'https://readallstores-ev6bb5ui6a-uc.a.run.app',
+        '/dixymediaupload/allstores.json',
+      ]
+      
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`Trying to fetch from: ${endpoint}`)
+          const { data } = await axios.get(endpoint, { 
+            responseType: 'json',
+            timeout: 10000,
+          })
+          const list = Array.isArray(data) ? data : []
+          if (list.length > 0) {
+            console.log(`Successfully loaded ${list.length} stores from ${endpoint}`)
+            setStores(list)
+            setStoresError('')
+            setStoresLoading(false)
+            return
+          }
+        } catch (err) {
+          console.warn(`Failed to fetch from ${endpoint}:`, err.message)
+          continue
+        }
+      }
+      
+      // All endpoints failed
+      setStoresError('Failed to load branches list. Please refresh or check network.')
+      console.error('All fetch attempts failed')
+      setStoresLoading(false)
     }
     fetchStores()
   }, [])
@@ -443,6 +456,12 @@ function App() {
             </select>
           </div>
           {storesError && (<div style={{ color: '#b91c1c', fontSize: 13 }}>{storesError}</div>)}
+          {!storesLoading && !storesError && stores.length === 0 && (
+            <div style={{ color: '#f59e0b', fontSize: 13 }}>No branches found. Check console for details.</div>
+          )}
+          {stores.length > 0 && (
+            <div style={{ color: '#10b981', fontSize: 12 }}>Loaded {stores.length} branch(es)</div>
+          )}
         </div>
         {selectedStore && (
           <div style={{ color: '#374151', fontSize: 14 }}>
