@@ -189,47 +189,6 @@ function App() {
         console.warn('Firebase Realtime Database fetch failed:', err.message)
       }
       
-      // Fallback: In dev use S3 proxy
-      if (IS_DEV) {
-        try {
-          const { data } = await axios.get('/s3/slideconfig/dixymedia/config/allstores.json', { responseType: 'json' })
-          const list = Array.isArray(data) ? data : []
-          setStores(list)
-          setStoresLoading(false)
-          return
-        } catch (err) {
-          console.error('Dev fetch error:', err)
-        }
-      }
-      
-      // Fallback: try Cloud Function endpoints
-      const endpoints = [
-        'https://us-central1-digislidesapp.cloudfunctions.net/readAllStores',
-        'https://readallstores-ev6bb5ui6a-uc.a.run.app',
-        '/dixymediaupload/allstores.json',
-      ]
-      
-      for (const endpoint of endpoints) {
-        try {
-          console.log(`Trying to fetch from: ${endpoint}`)
-          const { data } = await axios.get(endpoint, { 
-            responseType: 'json',
-            timeout: 10000,
-          })
-          const list = Array.isArray(data) ? data : []
-          if (list.length > 0) {
-            console.log(`Successfully loaded ${list.length} stores from ${endpoint}`)
-            setStores(list)
-            setStoresError('')
-            setStoresLoading(false)
-            return
-          }
-        } catch (err) {
-          console.warn(`Failed to fetch from ${endpoint}:`, err.message)
-          continue
-        }
-      }
-      
       // All endpoints failed
       setStoresError('Failed to load branches list. Please refresh or check network.')
       console.error('All fetch attempts failed')
