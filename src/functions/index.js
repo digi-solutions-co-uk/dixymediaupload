@@ -6,7 +6,7 @@ const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const S3_ACCESS_TYPES = { READ: 'read', WRITE: 'write' };
 const BUCKET = 'digisolutions-assets';
 const REGION = 'eu-west-1';
-
+// AWS credentials must be provided via environment variables (Firebase secrets)
 exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
     // Explicit CORS for allowed origins
     const origin = req.headers.origin;
@@ -32,7 +32,7 @@ exports.generatePresignedUrl = onRequest({ cors: true }, async (req, res) => {
      const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
 
      if (!accessKeyId || !secretAccessKey) {
-         console.error('Missing AWS credentials. Set process.env.AWS_ACCESS_KEY_ID and process.env.AWS_SECRET_ACCESS_KEY as secrets.')
+         console.error('Missing AWS credentials. Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY as secrets.')
          return res.status(500).json({ error: 'Missing AWS credentials on server' })
      }
 
@@ -107,6 +107,13 @@ exports.writeAllMedia = onRequest({ cors: true }, async (req, res) => {
     }
 });
 
+// Cache for stores data with TTL
+const storesCache = {
+    data: null,
+    timestamp: null,
+};
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
 // Server-side read of allstores.json to avoid CORS in production
 exports.readAllStores = onRequest({ cors: true }, async (req, res) => {
     const origin = req.headers.origin;
@@ -124,8 +131,15 @@ exports.readAllStores = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+    // Check if cache is valid
+    const now = Date.now();
+    if (storesCache.data && storesCache.timestamp && (now - storesCache.timestamp) < CACHE_TTL_MS) {
+        console.log('Returning cached stores data');
+        return res.status(200).json(storesCache.data);
+    }
+
+    const accessKeyId = AWS_ACCESS_KEY_ID
+    const secretAccessKey = AWS_SECRET_ACCESS_KEY
     if (!accessKeyId || !secretAccessKey) {
         console.error('Missing AWS credentials.');
         return res.status(500).json({ error: 'Missing AWS credentials on server' });
@@ -141,10 +155,23 @@ exports.readAllStores = onRequest({ cors: true }, async (req, res) => {
         const result = await s3Client.send(new GetObjectCommand(getParams));
         const body = await streamToString(result.Body);
         const json = JSON.parse(body || '[]');
+        
+        // Update cache
+        storesCache.data = json;
+        storesCache.timestamp = now;
+        console.log('Fetched fresh stores data and updated cache');
+        
         return res.status(200).json(json);
     } catch (error) {
         const message = error && error.message ? error.message : String(error);
         console.error('Error reading allstores.json:', message);
+        
+        // If we have stale cache, return it as fallback
+        if (storesCache.data) {
+            console.log('Returning stale cache due to error');
+            return res.status(200).json(storesCache.data);
+        }
+        
         return res.status(500).json({ error: 'Read failed', message });
     }
 });
@@ -175,8 +202,8 @@ exports.readAllMedia = onRequest({ cors: true }, async (req, res) => {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const accessKeyId = process.env.AWS_ACCESS_KEY_ID
-    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+    const accessKeyId = AWS_ACCESS_KEY_ID
+    const secretAccessKey = AWS_SECRET_ACCESS_KEY
     if (!accessKeyId || !secretAccessKey) {
         console.error('Missing AWS credentials.');
         return res.status(500).json({ error: 'Missing AWS credentials on server' });
