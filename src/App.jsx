@@ -1,11 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import axios from 'axios'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { database } from './firebase'
+import { digiAuth } from './firebase2'
 import { ref, get } from 'firebase/database'
+import Login from './components/Login'
 import './App.css'
 import logo from './assets/dixy_logo.svg'
 
 function App() {
+  const [user, setUser] = useState(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [selectedFiles, setSelectedFiles] = useState([])
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({})
@@ -20,25 +25,31 @@ function App() {
   // AWS Manager endpoint to generate pre-signed URLs
   // In dev, use Vite proxy to avoid CORS. In prod, use absolute URL.
   const IS_DEV = Boolean(import.meta && import.meta.env && import.meta.env.DEV)
-  const PRESIGN_ENDPOINT = IS_DEV
-    ? '/generatePresignedUrl'
-    : 'https://us-central1-digislidesapp.cloudfunctions.net/generatePresignedUrl'
+  const AUTH_PRESIGN_ENDPOINT = IS_DEV
+    ? '/s3AuthGeneratePresignedUrl'
+    : 'https://us-central1-digislidesapp.cloudfunctions.net/s3AuthGeneratePresignedUrl'
   const UPLOAD_API_BASE = IS_DEV
     ? '/uploadApi'
     : 'https://us-central1-digislidesapp.cloudfunctions.net/uploadApi'
-  const WRITE_ALL_MEDIA_ENDPOINT = IS_DEV
-    ? '/writeAllMedia'
-    : 'https://us-central1-digislidesapp.cloudfunctions.net/writeAllMedia'
-  const READ_ALL_MEDIA_ENDPOINT = IS_DEV
-    ? '/readAllMedia'
-    : 'https://us-central1-digislidesapp.cloudfunctions.net/readAllMedia'
 
   const getPreSignedURLForAllMedia = async (operationType = 'write') => {
     try {
+      let token = ''
+      if (digiAuth.currentUser) {
+        token = await digiAuth.currentUser.getIdToken(true)
+      }
+      const headers = { 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
+      const endpoint = AUTH_PRESIGN_ENDPOINT
+      const payload = operationType === 'write'
+        ? { s3Key: 'slideconfig/dixymedia/config/allmedia.json', operationType, expiresIn: 900 }
+        : { folderPath: 'slideconfig/dixymedia/config/allmedia.json', operationType }
+
       const { data } = await axios.post(
-        PRESIGN_ENDPOINT,
-        { folderPath: 'slideconfig/dixymedia/config/allmedia.json', operationType },
-        { headers: { 'Content-Type': 'application/json' } }
+        endpoint,
+        payload,
+        { headers }
       )
       // Normalize possible shapes
       if (typeof data === 'string') return data
@@ -62,8 +73,8 @@ function App() {
   const writeToS3WithPreSignedURLAllMedia = async (jsonPayload) => {
     try {
       const signedURL = await getPreSignedURLForAllMedia('write')
-      console.log('signedURL', signedURL)
-      console.log('jsonPayload', jsonPayload)
+      // console.log('signedURL', signedURL)
+      // console.log('jsonPayload', jsonPayload)
       if (!signedURL) throw new Error('No pre-signed URL returned')
       await axios.put(
         signedURL,
@@ -108,12 +119,18 @@ function App() {
 
   const readAllMediaFromS3 = async () => {
     try {
-      const res = await axios.get(READ_ALL_MEDIA_ENDPOINT, { responseType: 'json' })
+
+      const signedURL = await getPreSignedURLForAllMedia('read')
+      if (!signedURL) return []
+      const res = await axios.get(signedURL, {
+        headers: { 'Cache-Control': 'no-cache' },
+        responseType: 'json'
+      })
       const data = res.data
       return Array.isArray(data) ? data : []
     } catch (e) {
       if (axios.isAxiosError(e)) {
-        if (e.response?.status === 404) return []
+        if (e.response?.status === 404 || e.response?.status === 403) return [] // Might not exist yet
         console.error('Error reading allmedia.json:', e.response?.status, e.response?.data || e.message)
       } else {
         console.error('Error reading allmedia.json:', e)
@@ -127,22 +144,21 @@ function App() {
       const existing = await readAllMediaFromS3()
       const newItems = mapUploadedToAllMedia(uploadedMapped)
       const combined = [...existing, ...newItems]
-      const ok = await axios.post(WRITE_ALL_MEDIA_ENDPOINT, { items: combined }, { headers: { 'Content-Type': 'application/json' } })
-        .then(() => true)
-        .catch((e) => {
-          if (axios.isAxiosError(e)) {
-            console.error('Error writing allmedia.json:', e.response?.status, e.response?.data || e.message)
-          } else {
-            console.error('Error writing allmedia.json:', e)
-          }
-          return false
-        })
+      const ok = await writeToS3WithPreSignedURLAllMedia(combined)
       return ok
     } catch (error) {
       console.error('Error updating all media JSON:', error)
       return false
     }
   }
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(digiAuth, (currentUser) => {
+      setUser(currentUser)
+      setAuthLoading(false)
+    })
+    return unsubscribe
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -153,17 +169,19 @@ function App() {
 
   // Fetch branches list from Firebase Realtime Database
   useEffect(() => {
+    if (!user) return
+
     const fetchStores = async () => {
       setStoresLoading(true)
       setStoresError('')
-      
+
       // Try Firebase Realtime Database first
       try {
-        console.log('Fetching stores from Firebase Realtime Database...')
+        // console.log('Fetching stores from Firebase Realtime Database...')
         // Path in Realtime Database - adjust if your path is different
         const storesRef = ref(database, 'stores')
         const snapshot = await get(storesRef)
-        
+
         if (snapshot.exists()) {
           const data = snapshot.val()
           // Handle both array and object formats
@@ -174,9 +192,9 @@ function App() {
             // If it's an object, convert to array
             list = Object.values(data)
           }
-          
+
           if (list.length > 0) {
-            console.log(`Successfully loaded ${list.length} stores from Firebase Realtime Database`)
+            // console.log(`Successfully loaded ${list.length} stores from Firebase Realtime Database`)
             setStores(list)
             setStoresError('')
             setStoresLoading(false)
@@ -188,54 +206,64 @@ function App() {
       } catch (err) {
         console.warn('Firebase Realtime Database fetch failed:', err.message)
       }
-      
+
       // All endpoints failed
       setStoresError('Failed to load branches list. Please refresh or check network.')
       console.error('All fetch attempts failed')
       setStoresLoading(false)
     }
     fetchStores()
-  }, [])
+  }, [user])
 
   const acceptTypes = useMemo(() => 'image/jpeg,image/jpg,image/png,image/gif,image/webp,video/mp4,video/avi,video/mov,video/wmv,video/flv,video/webm', [])
 
+  const handleSignOut = async () => {
+    try {
+      await signOut(digiAuth)
+    } catch (err) {
+      console.error('Sign out error:', err)
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748b' }}>
+        Loading…
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <Login />
+  }
+
   const onChooseFiles = (e) => {
-    console.log('=== FILE INPUT EVENT ===')
-    console.log('Event type:', e.type)
-    console.log('Target:', e.target)
-    console.log('Files:', e.target.files)
-    console.log('Files length:', e.target.files?.length)
+    // console.log('=== FILE INPUT EVENT ===')
+    // console.log('Event type:', e.type)
+    // console.log('Target:', e.target)
+    // console.log('Files:', e.target.files)
+    // console.log('Files length:', e.target.files?.length)
 
     const files = Array.from(e.target.files || [])
-    console.log('Files array:', files)
-    console.log('Files selected:', files.length)
+    // console.log('Files array:', files)
+    // console.log('Files selected:', files.length)
 
     if (!files.length) {
-      console.log('No files selected, returning early')
+      // console.log('No files selected, returning early')
       return
     }
 
-    // Log each file's details
-    files.forEach((file, index) => {
-      console.log(`File ${index}:`, {
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        lastModified: file.lastModified
-      })
-    })
-
     const filtered = files.filter(f => (f.type || '').startsWith('image/') || (f.type || '').startsWith('video/'))
-    console.log('Filtered files:', filtered.length)
-    console.log('Filtered files details:', filtered.map(f => ({ name: f.name, type: f.type })))
+    // console.log('Filtered files:', filtered.length)
+    // console.log('Filtered files details:', filtered.map(f => ({ name: f.name, type: f.type })))
 
     if (filtered.length !== files.length) {
-      console.log('Some files were filtered out')
+      // console.log('Some files were filtered out')
       window.alert('Only images and videos are allowed.')
     }
 
     if (filtered.length === 0) {
-      console.log('No valid files after filtering')
+      // console.log('No valid files after filtering')
       return
     }
 
@@ -248,20 +276,20 @@ function App() {
       previewUrl: URL.createObjectURL(file),
     }))
 
-    console.log('Mapped files:', mapped)
-    console.log('Adding files to selectedFiles:', mapped.length)
+    // console.log('Mapped files:', mapped)
+    // console.log('Adding files to selectedFiles:', mapped.length)
 
     setSelectedFiles(prev => {
-      console.log('Previous selectedFiles:', prev.length)
+      // console.log('Previous selectedFiles:', prev.length)
       const newFiles = [...prev, ...mapped]
-      console.log('New selectedFiles:', newFiles.length)
-      console.log('New files details:', newFiles.map(f => ({ name: f.name, type: f.type })))
+      // console.log('New selectedFiles:', newFiles.length)
+      // console.log('New files details:', newFiles.map(f => ({ name: f.name, type: f.type })))
       return newFiles
     })
 
     // Reset input value to allow re-selecting the same file
     e.target.value = ''
-    console.log('=== END FILE INPUT EVENT ===')
+    // console.log('=== END FILE INPUT EVENT ===')
   }
 
   const onDrop = (e) => {
@@ -298,21 +326,21 @@ function App() {
   }
 
   const openFileDialog = () => {
-    console.log('=== OPEN FILE DIALOG ===')
-    console.log('Uploading state:', uploading)
-    console.log('File input ref:', fileInputRef.current)
-    console.log('File input disabled:', fileInputRef.current?.disabled)
+    // console.log('=== OPEN FILE DIALOG ===')
+    // console.log('Uploading state:', uploading)
+    // console.log('File input ref:', fileInputRef.current)
+    // console.log('File input disabled:', fileInputRef.current?.disabled)
 
     if (fileInputRef.current) {
-      console.log('File input ref exists, clicking...')
+      // console.log('File input ref exists, clicking...')
       // Reset the input value to ensure it triggers onChange even for the same files
       fileInputRef.current.value = ''
       fileInputRef.current.click()
-      console.log('File input clicked')
+      // console.log('File input clicked')
     } else {
-      console.log('File input ref not found')
+      // console.log('File input ref not found')
     }
-    console.log('=== END OPEN FILE DIALOG ===')
+    // console.log('=== END OPEN FILE DIALOG ===')
   }
 
   const removeFile = (index) => {
@@ -377,11 +405,18 @@ function App() {
 
       const folder = 'slideconfig/dixymedia'
 
+      let token = ''
+      if (digiAuth.currentUser) {
+        token = await digiAuth.currentUser.getIdToken(true)
+      }
+      const headers = { 'Content-Type': 'application/json', Accept: 'application/json' }
+      if (token) headers['Authorization'] = `Bearer ${token}`
+
       const { data: result } = await axios.post(
         `${UPLOAD_API_BASE}/upload`,
         { files: filesData },
         {
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          headers,
           params: { folder },
         }
       )
@@ -417,6 +452,26 @@ function App() {
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', alignItems: 'center', justifyContent: 'center', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ color: '#64748b', fontSize: 14 }}>{user.email}</span>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            style={{
+              padding: '8px 14px',
+              background: 'transparent',
+              color: '#183CB4',
+              border: '1px solid #183CB4',
+              borderRadius: 8,
+              cursor: 'pointer',
+              fontSize: 14,
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </div>
       <img src={logo} alt="Dixy Logo" style={{ width: 200, height: 200 }} />
       <h1 style={{ marginBottom: 8 }}>Dixy Media Uploader</h1>
       <p style={{ color: '#555', marginBottom: 16 }}>Select images and videos to upload to Dixy Media.</p>

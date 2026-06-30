@@ -56,4 +56,4 @@ content = content.replace(
 
 // Write the updated content
 fs.writeFileSync('src/App.jsx', content);
-console.log('Updated App.jsx successfully');
+// console.log('Updated App.jsx successfully');

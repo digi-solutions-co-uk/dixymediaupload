@@ -14,6 +14,12 @@ export default defineConfig({
         // function is deployed at root path /generatePresignedUrl
         rewrite: (path) => path.replace(/^\/generatePresignedUrl/, '/generatePresignedUrl'),
       },
+      '/s3AuthGeneratePresignedUrl': {
+        target: 'https://us-central1-digislidesapp.cloudfunctions.net',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/s3AuthGeneratePresignedUrl/, '/s3AuthGeneratePresignedUrl'),
+      },
       '/uploadApi': {
         target: 'https://us-central1-digislidesapp.cloudfunctions.net',
         changeOrigin: true,
